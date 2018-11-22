@@ -20,7 +20,7 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
     num_drone = (unsigned int)_num_drone;
     id = (unsigned int)_id;
 
-    for (int i = 0; i < num_drone; i++)
+    for (int i = 0; i < num_drone + 1; i++)
     {
         vehicle_pos.push_back(tf2::Vector3(0, 0, 0));
     }
@@ -30,23 +30,31 @@ SwarmCtrl::~SwarmCtrl()
 {
 }
 
+void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
+{
+    if (v.getX() > _limit)
+        v.setX(_limit);
+    if (v.getY() > _limit)
+        v.setY(_limit);
+    if (v.getZ() > _limit)
+        v.setZ(_limit);
+}
+
 void SwarmCtrl::getNeighborPos()
 {
     tf2_ros::TransformListener tfListener(tfBuffer);
     geometry_msgs::TransformStamped transformStamped;
 
-    int i = 1;
-    for (iter = vehicle_pos.begin(); iter != vehicle_pos.end(); iter++)
+    for (int i = 1; i < vehicle_pos.size(); i++)
     {
         try
         {
             transformStamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_base_link",
                                                         "camila" + std::to_string(i) + "_base_link",
-                                                        ros::Time(0) );
-            //벡터로 바꿔서 전역 벡터 배열에 넣기
-            // tf::Vector3 vect_1 (0,0,0);
-            // vect_1 = transformStamped.getOrigin();
-            // float dist_vect_1 = vect_1.distance(vect_1);
+                                                        ros::Time(0));
+            vehicle_pos[i].setX(transformStamped.transform.translation.x);
+            vehicle_pos[i].setY(transformStamped.transform.translation.y);
+            vehicle_pos[i].setZ(transformStamped.transform.translation.z);
         }
         catch (tf2::TransformException &ex) //LookupException 인지 확인하기
         {
@@ -54,7 +62,6 @@ void SwarmCtrl::getNeighborPos()
             ros::Duration(1.0).sleep();
             continue;
         }
-        i++;
     }
 }
 
@@ -69,13 +76,64 @@ void SwarmCtrl::applyBehaviors(std::vector<tf2::Vector3> _vehicles)
 {
 }
 
-tf2::Vector3 SwarmCtrl::seek(tf2::Vector3 _target)
+tf2::Vector3 SwarmCtrl::seek()
 {
+    geometry_msgs::TransformStamped tf_stamped;
+    tf2::Vector3 desired(0, 0, 0);
+    try
+    {
+        tf_stamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_base_link",
+                                              "camila" + std::to_string(id) + "_target",
+                                              ros::Time(0));
+        desired.setX(tf_stamped.transform.translation.x);                 
+        desired.setY(tf_stamped.transform.translation.y);                 
+        desired.setZ(tf_stamped.transform.translation.z);                 
+    }
+    catch (tf2::TransformException &ex)
+    {
+        ROS_WARN("%s", ex.what());
+        ros::Duration(1.0).sleep();
+    }
+    float dist = tf2::tf2Distance(desired, tf2::Vector3(0,0,0));
+    float damp_speed = dist * max_speed / range;
+    desired.normalize();
+
+    if( dist < range)
+        desired *= damp_speed;
+    else
+        desired *= max_speed;
+
+    tf2::Vector3 steer = desired -velocity;
+    limit(steer, max_force);
+    return steer;
 }
 
-tf2::Vector3 SwarmCtrl::separate(std::vector<tf2::Vector3> _vehicles)
+tf2::Vector3 SwarmCtrl::separate()
 {
     tf2::Vector3 sum(0, 0, 0);
+    unsigned int cnt = 0;
+    for (iter = vehicle_pos.begin(); iter != vehicle_pos.end(); iter++)
+    {
+        float dist = tf2::tf2Distance(vehicle_pos[id], *iter);
+        if (dist < range)
+        {
+            tf2::Vector3 diff = vehicle_pos[id] - *iter;
+            diff.normalize();
+            diff /= dist;
+            sum += diff;
+            cnt++;
+        }
+    }
+    if (cnt > 0)
+    {
+        sum /= cnt;
+        sum.normalize();
+        sum *= max_speed;
+        sum -= velocity;
+        limit(sum, max_force);
+    }
+
+    return sum;
 }
 
 tf2::Vector3 SwarmCtrl::cohesion(std::vector<tf2::Vector3> _vehicles)
@@ -84,4 +142,9 @@ tf2::Vector3 SwarmCtrl::cohesion(std::vector<tf2::Vector3> _vehicles)
 
 void SwarmCtrl::update()
 {
+    getNeighborPos();
+    velocity += acceleration;
+    limit(velocity, max_speed);
+    position += velocity;
+    acceleration *= 0;
 }

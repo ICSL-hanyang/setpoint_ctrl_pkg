@@ -33,9 +33,11 @@ class SwarmCtrl
     float m;
     float k;
     float b;
+    float range;
 
     float max_force;
     float max_speed;
+    void limit(tf2::Vector3, float);
 
   public:
     SwarmCtrl(tf2::Vector3);
@@ -48,8 +50,8 @@ class SwarmCtrl
     void getNeighborPos();
     void applyForce(tf2::Vector3);
     void applyBehaviors(std::vector<tf2::Vector3>);
-    tf2::Vector3 seek(tf2::Vector3);
-    tf2::Vector3 separate(std::vector<tf2::Vector3>);
+    tf2::Vector3 seek();
+    tf2::Vector3 separate();
     tf2::Vector3 cohesion(std::vector<tf2::Vector3>);
     void update();
 };
