@@ -16,6 +16,8 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
     nh.getParam("id", _id);
     nh.getParam("max_force", max_force);
     nh.getParam("max_speed", max_speed);
+    nh.getParam("seek_weight", seek_weight);
+    nh.getParam("separate_weight", separate_weight);
 
     num_drone = (unsigned int)_num_drone;
     id = (unsigned int)_id;
@@ -32,12 +34,11 @@ SwarmCtrl::~SwarmCtrl()
 
 void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
 {
-    if (v.getX() > _limit)
-        v.setX(_limit);
-    if (v.getY() > _limit)
-        v.setY(_limit);
-    if (v.getZ() > _limit)
-        v.setZ(_limit);
+    if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit * _limit)
+    {
+        v.normalize();
+        v *= _limit;
+    }
 }
 
 void SwarmCtrl::getNeighborPos()
@@ -72,8 +73,12 @@ void SwarmCtrl::applyForce(tf2::Vector3 _force)
     acceleration += f;
 }
 
-void SwarmCtrl::applyBehaviors(std::vector<tf2::Vector3> _vehicles)
+void SwarmCtrl::applyBehaviors()
 {
+    tf2::Vector3 seekForce = seek() * seek_weight;
+    tf2::Vector3 seperateForce = separate() * separate_weight;
+    applyForce(seekForce);
+    applyForce(seperateForce);
 }
 
 tf2::Vector3 SwarmCtrl::seek()
@@ -85,25 +90,25 @@ tf2::Vector3 SwarmCtrl::seek()
         tf_stamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_base_link",
                                               "camila" + std::to_string(id) + "_target",
                                               ros::Time(0));
-        desired.setX(tf_stamped.transform.translation.x);                 
-        desired.setY(tf_stamped.transform.translation.y);                 
-        desired.setZ(tf_stamped.transform.translation.z);                 
+        desired.setX(tf_stamped.transform.translation.x);
+        desired.setY(tf_stamped.transform.translation.y);
+        desired.setZ(tf_stamped.transform.translation.z);
     }
     catch (tf2::TransformException &ex)
     {
         ROS_WARN("%s", ex.what());
         ros::Duration(1.0).sleep();
     }
-    float dist = tf2::tf2Distance(desired, tf2::Vector3(0,0,0));
+    float dist = tf2::tf2Distance(desired, tf2::Vector3(0, 0, 0));
     float damp_speed = dist * max_speed / range;
     desired.normalize();
 
-    if( dist < range)
+    if (dist < range)
         desired *= damp_speed;
     else
         desired *= max_speed;
 
-    tf2::Vector3 steer = desired -velocity;
+    tf2::Vector3 steer = desired - velocity;
     limit(steer, max_force);
     return steer;
 }
@@ -147,4 +152,35 @@ void SwarmCtrl::update()
     limit(velocity, max_speed);
     position += velocity;
     acceleration *= 0;
+}
+
+void SwarmCtrl::transformSender()
+{
+    static tf2_ros::TransformBroadcaster tf_br;  
+    geometry_msgs::TransformStamped transformStamped;
+    transformStamped.header.stamp = ros::Time::now();
+    transformStamped.header.frame_id = "swarm_map";
+    transformStamped.child_frame_id = "camila" + std::to_string(id) + "_setpoint";
+    transformStamped.transform.translation.x = position.getX();
+    transformStamped.transform.translation.y = position.getY();
+    transformStamped.transform.translation.z = position.getZ();
+
+    // transformStamped.transform.translation.x = 1.0;
+    // transformStamped.transform.translation.y = 1.0;
+    // transformStamped.transform.translation.z = 1.0;
+
+    tf2::Quaternion q;
+    q.setRPY(0, 0, 0);
+    transformStamped.transform.rotation.x = q.x();
+    transformStamped.transform.rotation.y = q.y();
+    transformStamped.transform.rotation.z = q.z();
+    transformStamped.transform.rotation.w = q.w();
+    tf_br.sendTransform(transformStamped);
+}
+
+void SwarmCtrl::run()
+{
+    //applyBehaviors();
+    update();
+    transformSender();
 }

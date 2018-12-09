@@ -32,5 +32,5 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(swarm_ctrl_node src/main.cpp src/swarm_control.cpp)
-target_link_libraries(swarm_ctrl_node ${catkin_LIBRARIES})
+add_executable(setpoint_ctrl_node src/main.cpp src/swarm_control.cpp)
+target_link_libraries(setpoint_ctrl_node ${catkin_LIBRARIES})
