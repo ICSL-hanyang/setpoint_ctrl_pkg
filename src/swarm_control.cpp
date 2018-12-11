@@ -37,7 +37,9 @@ void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
 {
     if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit * _limit)
     {
-        v.normalize();
+        ROS_INFO("limit %lf", v.distance(tf2::Vector3(0,0,0)));
+        if (v.distance(tf2::Vector3(0,0,0)) != 0)
+            v.normalize();
         v *= _limit;
     }
 }
@@ -105,7 +107,10 @@ tf2::Vector3 SwarmCtrl::seek()
     }
     float dist = tf2::tf2Distance(desired, tf2::Vector3(0, 0, 0));
     float damp_speed = dist * max_speed / range;
-    desired.normalize();
+
+    ROS_INFO("Seek %lf", desired.distance(tf2::Vector3(0,0,0)));
+    if (desired.distance(tf2::Vector3(0,0,0)) != 0)
+        desired.normalize();
 
     if (dist < range)
         desired *= damp_speed;
@@ -129,7 +134,9 @@ tf2::Vector3 SwarmCtrl::separate()
             if (dist < range)
             {
                 tf2::Vector3 diff = vehicle_pos[id] - *iter;
-                diff.normalize();
+                ROS_INFO("Separate %lf", diff.distance(tf2::Vector3(0,0,0)));
+                if (diff.distance(tf2::Vector3(0,0,0)) != 0)
+                    diff.normalize();
                 diff /= dist;
                 sum += diff;
                 cnt++;
@@ -139,7 +146,9 @@ tf2::Vector3 SwarmCtrl::separate()
     if (cnt > 0)
     {
         sum /= cnt;
-        sum.normalize();
+        ROS_INFO("Sum %lf", sum.distance(tf2::Vector3(0,0,0)));
+        if (sum.distance(tf2::Vector3(0,0,0)) != 0)
+            sum.normalize();
         sum *= max_speed;
         sum -= velocity;
         limit(sum, max_force);
