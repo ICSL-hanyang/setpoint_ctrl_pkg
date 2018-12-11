@@ -35,7 +35,7 @@ SwarmCtrl::~SwarmCtrl()
 
 void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
 {
-    if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit * _limit)
+    if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit)
     {
         v.normalize();
         v *= _limit;
@@ -105,6 +105,7 @@ tf2::Vector3 SwarmCtrl::seek()
     }
     float dist = tf2::tf2Distance(desired, tf2::Vector3(0, 0, 0));
     float damp_speed = dist * max_speed / range;
+
     desired.normalize();
 
     if (dist < range)
@@ -126,6 +127,7 @@ tf2::Vector3 SwarmCtrl::separate()
         if (*iter != vehicle_pos[id])
         {
             float dist = tf2::tf2Distance(vehicle_pos[id], *iter);
+            printf("dist = %f", dist);
             if (dist < range)
             {
                 tf2::Vector3 diff = vehicle_pos[id] - *iter;
