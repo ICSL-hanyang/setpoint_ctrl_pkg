@@ -9,7 +9,8 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
                                                position(_position),
                                                velocity(tf2::Vector3(0, 0, 0)),
                                                acceleration(tf2::Vector3(0, 0, 0)),
-                                               m(1)
+                                               m(1),
+                                               range(2)
 {
     float _num_drone, _id;
     nh.getParam("num_drone", _num_drone);
@@ -56,8 +57,11 @@ void SwarmCtrl::getNeighborPos()
             vehicle_pos[i].setX(transformStamped.transform.translation.x);
             vehicle_pos[i].setY(transformStamped.transform.translation.y);
             vehicle_pos[i].setZ(transformStamped.transform.translation.z);
+            // printf("x = %f", vehicle_pos[i].getX());
+            // printf("  y = %f", vehicle_pos[i].getY());
+            // printf("  z = %f\n", vehicle_pos[i].getZ());
         }
-        catch (tf2::TransformException &ex) //LookupException 인지 확인하기
+        catch (tf2::TransformException &ex) 
         {
             ROS_WARN("%s", ex.what());
             ros::Duration(1.0).sleep();
@@ -147,16 +151,18 @@ tf2::Vector3 SwarmCtrl::cohesion(std::vector<tf2::Vector3> _vehicles)
 
 void SwarmCtrl::update()
 {
-    getNeighborPos();
     velocity += acceleration;
     limit(velocity, max_speed);
     position += velocity;
     acceleration *= 0;
+    printf("x = %f",position.getX());
+    printf("   y = %f",position.getY());
+    printf("   z = %f\n",position.getZ());
 }
 
 void SwarmCtrl::transformSender()
 {
-    static tf2_ros::TransformBroadcaster tf_br;  
+    static tf2_ros::TransformBroadcaster tf_br;
     geometry_msgs::TransformStamped transformStamped;
     transformStamped.header.stamp = ros::Time::now();
     transformStamped.header.frame_id = "swarm_map";
@@ -164,10 +170,6 @@ void SwarmCtrl::transformSender()
     transformStamped.transform.translation.x = position.getX();
     transformStamped.transform.translation.y = position.getY();
     transformStamped.transform.translation.z = position.getZ();
-
-    // transformStamped.transform.translation.x = 1.0;
-    // transformStamped.transform.translation.y = 1.0;
-    // transformStamped.transform.translation.z = 1.0;
 
     tf2::Quaternion q;
     q.setRPY(0, 0, 0);
@@ -180,7 +182,8 @@ void SwarmCtrl::transformSender()
 
 void SwarmCtrl::run()
 {
-    //applyBehaviors();
+    getNeighborPos();
+    applyBehaviors();
     update();
-    transformSender();
+    //transformSender();
 }
