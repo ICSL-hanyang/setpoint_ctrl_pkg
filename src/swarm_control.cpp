@@ -61,7 +61,7 @@ void SwarmCtrl::getNeighborPos()
             // printf("  y = %f", vehicle_pos[i].getY());
             // printf("  z = %f\n", vehicle_pos[i].getZ());
         }
-        catch (tf2::TransformException &ex) 
+        catch (tf2::TransformException &ex)
         {
             ROS_WARN("%s", ex.what());
             ros::Duration(1.0).sleep();
@@ -121,16 +121,19 @@ tf2::Vector3 SwarmCtrl::separate()
 {
     tf2::Vector3 sum(0, 0, 0);
     unsigned int cnt = 0;
-    for (iter = vehicle_pos.begin(); iter != vehicle_pos.end(); iter++)
+    for (iter = vehicle_pos.begin() + 1; iter != vehicle_pos.end(); iter++)
     {
-        float dist = tf2::tf2Distance(vehicle_pos[id], *iter);
-        if (dist < range)
+        if (*iter != vehicle_pos[id])
         {
-            tf2::Vector3 diff = vehicle_pos[id] - *iter;
-            diff.normalize();
-            diff /= dist;
-            sum += diff;
-            cnt++;
+            float dist = tf2::tf2Distance(vehicle_pos[id], *iter);
+            if (dist < range)
+            {
+                tf2::Vector3 diff = vehicle_pos[id] - *iter;
+                diff.normalize();
+                diff /= dist;
+                sum += diff;
+                cnt++;
+            }
         }
     }
     if (cnt > 0)
@@ -155,9 +158,9 @@ void SwarmCtrl::update()
     limit(velocity, max_speed);
     position += velocity;
     acceleration *= 0;
-    printf("x = %f",position.getX());
-    printf("   y = %f",position.getY());
-    printf("   z = %f\n",position.getZ());
+    printf("x = %f", position.getX());
+    printf("   y = %f", position.getY());
+    printf("   z = %f\n", position.getZ());
 }
 
 void SwarmCtrl::transformSender()
