@@ -37,7 +37,9 @@ void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
 {
     if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit)
     {
-        v.normalize();
+        //ROS_INFO("limit %lf", v.distance(tf2::Vector3(0,0,0)));
+        if (v.distance(tf2::Vector3(0, 0, 0)) != 0)
+            v.normalize();
         v *= _limit;
     }
 }
@@ -51,8 +53,8 @@ void SwarmCtrl::getNeighborPos()
     {
         try
         {
-            transformStamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_base_link",
-                                                        "camila" + std::to_string(i) + "_base_link",
+            transformStamped = tfBuffer.lookupTransform("camila" + std::to_string(i) + "_base_link",
+                                                        "camila" + std::to_string(id) + "_base_link",
                                                         ros::Time(0));
             vehicle_pos[i].setX(transformStamped.transform.translation.x);
             vehicle_pos[i].setY(transformStamped.transform.translation.y);
@@ -82,7 +84,7 @@ void SwarmCtrl::applyBehaviors()
     tf2::Vector3 seekForce = seek() * seek_weight;
     tf2::Vector3 seperateForce = separate() * separate_weight;
     applyForce(seekForce);
-    applyForce(seperateForce);
+    //applyForce(seperateForce);
 }
 
 tf2::Vector3 SwarmCtrl::seek()
@@ -91,8 +93,8 @@ tf2::Vector3 SwarmCtrl::seek()
     tf2::Vector3 desired(0, 0, 0);
     try
     {
-        tf_stamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_base_link",
-                                              "camila" + std::to_string(id) + "_target",
+        tf_stamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_target",
+                                              "camila" + std::to_string(id) + "_base_link",
                                               ros::Time(0));
         desired.setX(tf_stamped.transform.translation.x);
         desired.setY(tf_stamped.transform.translation.y);
@@ -106,7 +108,9 @@ tf2::Vector3 SwarmCtrl::seek()
     float dist = tf2::tf2Distance(desired, tf2::Vector3(0, 0, 0));
     float damp_speed = dist * max_speed / range;
 
-    desired.normalize();
+    //ROS_INFO("Seek %lf", desired.distance(tf2::Vector3(0,0,0)));
+    if (desired.distance(tf2::Vector3(0, 0, 0)) != 0)
+        desired.normalize();
 
     if (dist < range)
         desired *= damp_speed;
@@ -127,11 +131,13 @@ tf2::Vector3 SwarmCtrl::separate()
         if (*iter != vehicle_pos[id])
         {
             float dist = tf2::tf2Distance(vehicle_pos[id], *iter);
-            printf("dist = %f", dist);
+            //printf("dist = %f", dist);
             if (dist < range)
             {
                 tf2::Vector3 diff = vehicle_pos[id] - *iter;
-                diff.normalize();
+                //ROS_INFO("Separate %lf", diff.distance(tf2::Vector3(0,0,0)));
+                if (diff.distance(tf2::Vector3(0, 0, 0)) != 0)
+                    diff.normalize();
                 diff /= dist;
                 sum += diff;
                 cnt++;
@@ -141,7 +147,9 @@ tf2::Vector3 SwarmCtrl::separate()
     if (cnt > 0)
     {
         sum /= cnt;
-        sum.normalize();
+        //ROS_INFO("Sum %lf", sum.distance(tf2::Vector3(0,0,0)));
+        if (sum.distance(tf2::Vector3(0, 0, 0)) != 0)
+            sum.normalize();
         sum *= max_speed;
         sum -= velocity;
         limit(sum, max_force);
@@ -160,9 +168,9 @@ void SwarmCtrl::update()
     limit(velocity, max_speed);
     position += velocity;
     acceleration *= 0;
-    printf("x = %f", position.getX());
-    printf("   y = %f", position.getY());
-    printf("   z = %f\n", position.getZ());
+    // printf("x = %f", position.getX());
+    // printf("   y = %f", position.getY());
+    // printf("   z = %f\n", position.getZ());
 }
 
 void SwarmCtrl::transformSender()
@@ -190,5 +198,5 @@ void SwarmCtrl::run()
     getNeighborPos();
     applyBehaviors();
     update();
-    //transformSender();
+    transformSender();
 }

@@ -5,7 +5,7 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "setpoint_ctrl_node");
 	ros::NodeHandle nh("~");
-	ros::Rate rate(20);
+	ros::Rate rate(30);
 	SwarmCtrl ctrl(tf2::Vector3(3, 3, 3));
 	ROS_INFO("setpoint_ctrl_node start");
 
