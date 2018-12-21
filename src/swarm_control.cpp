@@ -19,6 +19,15 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
     nh.getParam("max_speed", max_speed);
     nh.getParam("seek_weight", seek_weight);
     nh.getParam("separate_weight", separate_weight);
+    state_sub = nh.subscribe("state", 10, &SwarmCtrl::stateCB, this);
+
+    if (_num_drone < 1)
+    {
+        ROS_WARN("num_drone Param must be greater than 1");
+        num_drone = 0;
+    }
+    if (_id < 1)
+        ROS_WARN("id of drone Param must be greater than 1");
 
     num_drone = (unsigned int)_num_drone;
     id = (unsigned int)_id;
@@ -40,8 +49,13 @@ void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
         //ROS_INFO("limit %lf", v.distance(tf2::Vector3(0,0,0)));
         if (v.distance(tf2::Vector3(0, 0, 0)) != 0)
             v.normalize();
-        v *= _limit;
+        v *= _limit; // 개별적으로 곱해지므로 크기가 limit 보다 커짐
     }
+}
+
+void SwarmCtrl::stateCB(const mavros_msgs::State::ConstPtr &msg)
+{
+    cur_state = *msg;
 }
 
 void SwarmCtrl::getNeighborPos()
@@ -53,12 +67,15 @@ void SwarmCtrl::getNeighborPos()
     {
         try
         {
-            transformStamped = tfBuffer.lookupTransform("camila" + std::to_string(i) + "_base_link",
-                                                        "camila" + std::to_string(id) + "_base_link",
-                                                        ros::Time(0));
-            vehicle_pos[i].setX(transformStamped.transform.translation.x);
-            vehicle_pos[i].setY(transformStamped.transform.translation.y);
-            vehicle_pos[i].setZ(transformStamped.transform.translation.z);
+            if (i != id)
+            {
+                transformStamped = tfBuffer.lookupTransform("camila" + std::to_string(i) + "_base_link",
+                                                            "camila" + std::to_string(id) + "_base_link",
+                                                            ros::Time(0));
+                vehicle_pos[i].setX(transformStamped.transform.translation.x);
+                vehicle_pos[i].setY(transformStamped.transform.translation.y);
+                vehicle_pos[i].setZ(transformStamped.transform.translation.z);
+            }
             // printf("x = %f", vehicle_pos[i].getX());
             // printf("  y = %f", vehicle_pos[i].getY());
             // printf("  z = %f\n", vehicle_pos[i].getZ());
@@ -72,21 +89,6 @@ void SwarmCtrl::getNeighborPos()
     }
 }
 
-void SwarmCtrl::applyForce(tf2::Vector3 _force)
-{
-    tf2::Vector3 f = _force;
-    f /= m;
-    acceleration += f;
-}
-
-void SwarmCtrl::applyBehaviors()
-{
-    tf2::Vector3 seekForce = seek() * seek_weight;
-    tf2::Vector3 seperateForce = separate() * separate_weight;
-    applyForce(seekForce);
-    //applyForce(seperateForce);
-}
-
 tf2::Vector3 SwarmCtrl::seek()
 {
     geometry_msgs::TransformStamped tf_stamped;
@@ -94,8 +96,8 @@ tf2::Vector3 SwarmCtrl::seek()
     try
     {
         tf_stamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_target",
-                                              "camila" + std::to_string(id) + "_base_link",
-                                              ros::Time(0));
+                                              "camila" + std::to_string(id) + "_setpoint",
+                                              ros::Time(0)); //setpoint랑 타겟이랑 해야할듯
         desired.setX(tf_stamped.transform.translation.x);
         desired.setY(tf_stamped.transform.translation.y);
         desired.setZ(tf_stamped.transform.translation.z);
@@ -162,6 +164,21 @@ tf2::Vector3 SwarmCtrl::cohesion(std::vector<tf2::Vector3> _vehicles)
 {
 }
 
+void SwarmCtrl::applyForce(tf2::Vector3 _force)
+{
+    tf2::Vector3 f = _force;
+    f /= m;
+    acceleration += f;
+}
+
+void SwarmCtrl::applyBehaviors()
+{
+    tf2::Vector3 seekForce = seek() * seek_weight;
+    tf2::Vector3 seperateForce = separate() * separate_weight;
+    applyForce(seekForce);
+    //applyForce(seperateForce);
+}
+
 void SwarmCtrl::update()
 {
     velocity += acceleration;
@@ -195,8 +212,11 @@ void SwarmCtrl::transformSender()
 
 void SwarmCtrl::run()
 {
-    getNeighborPos();
-    applyBehaviors();
-    update();
-    transformSender();
+    if (cur_state.mode == "offboard" || cur_state.mode == "OFFBOARD")
+    {
+        getNeighborPos();
+        applyBehaviors();
+        update();
+    }
+        transformSender();
 }
