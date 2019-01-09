@@ -15,19 +15,42 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h>
 
+static unsigned int my_id;
+
+class VehiclePos
+{
+private:
+  unsigned int id;
+  tf2::Vector3 relative_pos;
+  tf2_ros::Buffer* tfBuffer;
+  tf2_ros::TransformListener* tfListener;
+
+public:
+  VehiclePos(const unsigned int _id);
+  ~VehiclePos();
+
+  const unsigned int getID();
+  void setRelativePos();
+  tf2::Vector3 getRelativePos();
+};
+
 class SwarmCtrl
 {
 private:
   ros::NodeHandle nh;
-  tf2_ros::Buffer tfBuffer;
+  ros::NodeHandle nh_global;
+  
+  /* 현재 모드가 offboard 모드일때만 업데이트를 하기 위해 필요 */
   ros::Subscriber state_sub;
   mavros_msgs::State cur_state;
 
-  unsigned int num_drone;
-  unsigned int id;
+  tf2_ros::Buffer* tfBuffer;
+  tf2_ros::TransformListener* tfListener;
 
-  std::vector<tf2::Vector3> vehicle_pos;
-  std::vector<tf2::Vector3>::iterator iter;
+  unsigned int num_drone;
+
+  std::vector<VehiclePos> vehicle_positions;
+  std::vector<VehiclePos>::iterator iter;
 
   tf2::Vector3 position;
   tf2::Vector3 velocity;
@@ -44,6 +67,9 @@ private:
   float separate_weight;
   void limit(tf2::Vector3, float);
 
+  void stateCB(const mavros_msgs::State::ConstPtr &msg);
+  tf2::Vector3 cohesion(); /* 미구현 */
+
 public:
   SwarmCtrl(tf2::Vector3);
   SwarmCtrl(SwarmCtrl &&) = default;
@@ -51,15 +77,12 @@ public:
   SwarmCtrl &operator=(SwarmCtrl &&) = default;
   SwarmCtrl &operator=(const SwarmCtrl &) = default;
   ~SwarmCtrl();
-  
-  void stateCB(const mavros_msgs::State::ConstPtr &msg);
 
   void getNeighborPos();
-  void applyForce(tf2::Vector3);
-  void applyBehaviors();
   tf2::Vector3 seek();
   tf2::Vector3 separate();
-  tf2::Vector3 cohesion(std::vector<tf2::Vector3>);
+  void applyForce(tf2::Vector3);
+  void applyBehaviors();
   void update();
   void transformSender();
   void run();

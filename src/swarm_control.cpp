@@ -5,43 +5,53 @@
 #include <ros/ros.h>
 #include <swarm_control.h>
 
-SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
-                                               position(_position),
-                                               velocity(tf2::Vector3(0, 0, 0)),
-                                               acceleration(tf2::Vector3(0, 0, 0)),
-                                               m(1),
-                                               range(2)
+/* VehiclePos */
+VehiclePos::VehiclePos(const unsigned int _id)
+    : id(_id),
+      relative_pos(tf2::Vector3(0, 0, 0))
 {
-    float _num_drone, _id;
-    nh.getParam("num_drone", _num_drone);
-    nh.getParam("id", _id);
-    nh.getParam("max_force", max_force);
-    nh.getParam("max_speed", max_speed);
-    nh.getParam("seek_weight", seek_weight);
-    nh.getParam("separate_weight", separate_weight);
-    state_sub = nh.subscribe("state", 10, &SwarmCtrl::stateCB, this);
+    tfBuffer = new tf2_ros::Buffer();
+    tfListener = new tf2_ros::TransformListener(*tfBuffer);
+}
+VehiclePos::~VehiclePos(){
+    delete tfBuffer;
+    delete tfListener;
+}
 
-    if (_num_drone < 1)
+const unsigned int VehiclePos::getID()
+{
+    return id;
+}
+
+void VehiclePos::setRelativePos()
+{
+    geometry_msgs::TransformStamped transformStamped;
+
+    try
     {
-        ROS_WARN("num_drone Param must be greater than 1");
-        num_drone = 0;
+        transformStamped = tfBuffer->lookupTransform("camila" + std::to_string(getID()) + "_base_link",
+                                                    "camila" + std::to_string(my_id) + "_base_link",
+                                                    ros::Time(0));
+        relative_pos.setX(transformStamped.transform.translation.x);
+        relative_pos.setY(transformStamped.transform.translation.y);
+        relative_pos.setZ(transformStamped.transform.translation.z);
+        // printf("x = %f", vehicle_positions[i].getX());
+        // printf("  y = %f", vehicle_positions[i].getY());
+        // printf("  z = %f\n", vehicle_positions[i].getZ());
     }
-    if (_id < 1)
-        ROS_WARN("id of drone Param must be greater than 1");
-
-    num_drone = (unsigned int)_num_drone;
-    id = (unsigned int)_id;
-
-    for (int i = 0; i < num_drone + 1; i++)
+    catch (tf2::TransformException &ex)
     {
-        vehicle_pos.push_back(tf2::Vector3(0, 0, 0));
+        ROS_WARN("%s", ex.what());
+        ros::Duration(1.0).sleep();
     }
 }
 
-SwarmCtrl::~SwarmCtrl()
+tf2::Vector3 VehiclePos::getRelativePos()
 {
+    return relative_pos;
 }
 
+/* SwarmCtrl */
 void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
 {
     if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit)
@@ -58,34 +68,59 @@ void SwarmCtrl::stateCB(const mavros_msgs::State::ConstPtr &msg)
     cur_state = *msg;
 }
 
+SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
+                                               nh_global(ros::NodeHandle()),
+                                               position(_position),
+                                               velocity(tf2::Vector3(0, 0, 0)),
+                                               acceleration(tf2::Vector3(0, 0, 0)),
+                                               m(1),
+                                               k(1),
+                                               b(1),
+                                               range(2)
+{
+    float _num_drone, _id;
+    nh.getParam("num_drone", _num_drone);
+    nh.getParam("id", _id);
+    nh.getParam("max_force", max_force);
+    nh.getParam("max_speed", max_speed);
+    nh.getParam("seek_weight", seek_weight);
+    nh.getParam("separate_weight", separate_weight);
+
+    if (_num_drone < 1)
+    {
+        ROS_WARN("num_drone Param must be greater than 1");
+        num_drone = 0;
+    }
+    if (_id < 1)
+        ROS_WARN("id of drone Param must be greater than 1");
+    
+    tfBuffer = new tf2_ros::Buffer();
+    tfListener = new tf2_ros::TransformListener(*tfBuffer);
+
+    num_drone = (unsigned int)_num_drone;
+    my_id = (unsigned int)_id;
+
+    state_sub = nh_global.subscribe("/camila" + std::to_string(my_id) + "/mavros/state", 10, &SwarmCtrl::stateCB, this);
+
+    for (int i = 0; i < num_drone; i++)
+    {
+        vehicle_positions.push_back(VehiclePos(i + 1));
+        // 기체 id는 1부터 여기 for 문만 id 신경 쓰기
+    }
+}
+
+SwarmCtrl::~SwarmCtrl()
+{
+    state_sub.shutdown();
+    delete tfBuffer;
+    delete tfListener;
+}
+
 void SwarmCtrl::getNeighborPos()
 {
-    tf2_ros::TransformListener tfListener(tfBuffer);
-    geometry_msgs::TransformStamped transformStamped;
-
-    for (int i = 1; i < vehicle_pos.size(); i++)
+    for (auto &pos : vehicle_positions)
     {
-        try
-        {
-            if (i != id)
-            {
-                transformStamped = tfBuffer.lookupTransform("camila" + std::to_string(i) + "_base_link",
-                                                            "camila" + std::to_string(id) + "_base_link",
-                                                            ros::Time(0));
-                vehicle_pos[i].setX(transformStamped.transform.translation.x);
-                vehicle_pos[i].setY(transformStamped.transform.translation.y);
-                vehicle_pos[i].setZ(transformStamped.transform.translation.z);
-            }
-            // printf("x = %f", vehicle_pos[i].getX());
-            // printf("  y = %f", vehicle_pos[i].getY());
-            // printf("  z = %f\n", vehicle_pos[i].getZ());
-        }
-        catch (tf2::TransformException &ex)
-        {
-            ROS_WARN("%s", ex.what());
-            ros::Duration(1.0).sleep();
-            continue;
-        }
+        pos.setRelativePos();
     }
 }
 
@@ -93,11 +128,12 @@ tf2::Vector3 SwarmCtrl::seek()
 {
     geometry_msgs::TransformStamped tf_stamped;
     tf2::Vector3 desired(0, 0, 0);
+
     try
     {
-        tf_stamped = tfBuffer.lookupTransform("camila" + std::to_string(id) + "_target",
-                                              "camila" + std::to_string(id) + "_setpoint",
-                                              ros::Time(0)); //setpoint랑 타겟이랑 해야할듯
+        tf_stamped = tfBuffer->lookupTransform("camila" + std::to_string(my_id) + "_target",
+                                              "camila" + std::to_string(my_id) + "_setpoint",
+                                              ros::Time(0));
         desired.setX(tf_stamped.transform.translation.x);
         desired.setY(tf_stamped.transform.translation.y);
         desired.setZ(tf_stamped.transform.translation.z);
@@ -107,11 +143,12 @@ tf2::Vector3 SwarmCtrl::seek()
         ROS_WARN("%s", ex.what());
         ros::Duration(1.0).sleep();
     }
-    float dist = tf2::tf2Distance(desired, tf2::Vector3(0, 0, 0));
+
+    float dist = desired.distance(tf2::Vector3(0, 0, 0));
     float damp_speed = dist * max_speed / range;
 
-    //ROS_INFO("Seek %lf", desired.distance(tf2::Vector3(0,0,0)));
-    if (desired.distance(tf2::Vector3(0, 0, 0)) != 0)
+    ROS_INFO("Seek %lf", dist);
+    if (dist != 0)
         desired.normalize();
 
     if (dist < range)
@@ -119,24 +156,25 @@ tf2::Vector3 SwarmCtrl::seek()
     else
         desired *= max_speed;
 
-    tf2::Vector3 steer = desired - velocity;
+    /* tf2::Vector3 steer = desired - velocity;
     limit(steer, max_force);
-    return steer;
+    return steer; */
+    return desired;
 }
 
 tf2::Vector3 SwarmCtrl::separate()
 {
     tf2::Vector3 sum(0, 0, 0);
     unsigned int cnt = 0;
-    for (iter = vehicle_pos.begin() + 1; iter != vehicle_pos.end(); iter++)
+    for (auto &pos : vehicle_positions)
     {
-        if (*iter != vehicle_pos[id])
+        if (pos.getID() != my_id)
         {
-            float dist = tf2::tf2Distance(vehicle_pos[id], *iter);
+            tf2::Vector3 diff = pos.getRelativePos();
+            float dist = diff.distance(tf2::Vector3(0, 0, 0));
             //printf("dist = %f", dist);
             if (dist < range)
             {
-                tf2::Vector3 diff = vehicle_pos[id] - *iter;
                 //ROS_INFO("Separate %lf", diff.distance(tf2::Vector3(0,0,0)));
                 if (diff.distance(tf2::Vector3(0, 0, 0)) != 0)
                     diff.normalize();
@@ -160,7 +198,7 @@ tf2::Vector3 SwarmCtrl::separate()
     return sum;
 }
 
-tf2::Vector3 SwarmCtrl::cohesion(std::vector<tf2::Vector3> _vehicles)
+tf2::Vector3 SwarmCtrl::cohesion()
 {
 }
 
@@ -196,7 +234,7 @@ void SwarmCtrl::transformSender()
     geometry_msgs::TransformStamped transformStamped;
     transformStamped.header.stamp = ros::Time::now();
     transformStamped.header.frame_id = "swarm_map";
-    transformStamped.child_frame_id = "camila" + std::to_string(id) + "_setpoint";
+    transformStamped.child_frame_id = "camila" + std::to_string(my_id) + "_setpoint";
     transformStamped.transform.translation.x = position.getX();
     transformStamped.transform.translation.y = position.getY();
     transformStamped.transform.translation.z = position.getZ();
@@ -218,5 +256,5 @@ void SwarmCtrl::run()
         applyBehaviors();
         update();
     }
-        transformSender();
+    transformSender();
 }
