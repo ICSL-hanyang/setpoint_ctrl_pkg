@@ -22,15 +22,12 @@ class VehiclePos
 private:
   unsigned int id;
   tf2::Vector3 relative_pos;
-  tf2_ros::Buffer* tfBuffer;
-  tf2_ros::TransformListener* tfListener;
 
 public:
-  VehiclePos(const unsigned int _id);
-  ~VehiclePos();
+  VehiclePos(const unsigned int&);
 
   const unsigned int getID();
-  void setRelativePos();
+  void setRelativePos(const tf2::Vector3&);
   tf2::Vector3 getRelativePos();
 };
 
@@ -50,7 +47,6 @@ private:
   unsigned int num_drone;
 
   std::vector<VehiclePos> vehicle_positions;
-  std::vector<VehiclePos>::iterator iter;
 
   tf2::Vector3 position;
   tf2::Vector3 velocity;
