@@ -6,13 +6,19 @@
 #include <swarm_control.h>
 
 /* VehiclePos */
+VehiclePos::VehiclePos()
+    : id(0),
+      relative_pos(tf2::Vector3(0, 0, 0))
+{
+}
+
 VehiclePos::VehiclePos(const unsigned int &_id)
     : id(_id),
       relative_pos(tf2::Vector3(0, 0, 0))
 {
 }
 
-const unsigned int VehiclePos::getID()
+const unsigned int VehiclePos::getID() const
 {
     return id;
 }
@@ -22,7 +28,7 @@ void VehiclePos::setRelativePos(const tf2::Vector3 &_r_pos)
     relative_pos = _r_pos;
 }
 
-tf2::Vector3 VehiclePos::getRelativePos()
+tf2::Vector3 VehiclePos::getRelativePos() const
 {
     return relative_pos;
 }
@@ -46,10 +52,12 @@ void SwarmCtrl::stateCB(const mavros_msgs::State::ConstPtr &msg)
 
 SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
                                                nh_global(ros::NodeHandle()),
+                                               tfBuffer(new tf2_ros::Buffer()),
+                                               tfListener(new tf2_ros::TransformListener(*tfBuffer)),
                                                position(_position),
                                                velocity(tf2::Vector3(0, 0, 0)),
                                                acceleration(tf2::Vector3(0, 0, 0)),
-                                               m(1),
+                                               m(1000),
                                                k(1),
                                                b(1),
                                                range(2)
@@ -70,9 +78,6 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
     if (_id < 1)
         ROS_WARN("id of drone Param must be greater than 1");
 
-    tfBuffer = new tf2_ros::Buffer();
-    tfListener = new tf2_ros::TransformListener(*tfBuffer);
-
     num_drone = (unsigned int)_num_drone;
     my_id = (unsigned int)_id;
 
@@ -88,8 +93,6 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
 SwarmCtrl::~SwarmCtrl()
 {
     state_sub.shutdown();
-    delete tfBuffer;
-    delete tfListener;
 }
 
 void SwarmCtrl::getNeighborPos()
@@ -130,8 +133,8 @@ tf2::Vector3 SwarmCtrl::seek()
 
     try
     {
-        tf_stamped = tfBuffer->lookupTransform("camila" + std::to_string(my_id) + "_target",
-                                               "camila" + std::to_string(my_id) + "_setpoint",
+        tf_stamped = tfBuffer->lookupTransform("camila" + std::to_string(my_id) + "_setpoint",
+                                               "camila" + std::to_string(my_id) + "_target",
                                                ros::Time(0));
         desired.setX(tf_stamped.transform.translation.x);
         desired.setY(tf_stamped.transform.translation.y);
@@ -144,9 +147,9 @@ tf2::Vector3 SwarmCtrl::seek()
     }
 
     float dist = desired.distance(tf2::Vector3(0, 0, 0));
-    float damp_speed = dist * max_speed / range;
+    float damp_speed = dist * max_speed / (range*10);
 
-    ROS_INFO("Seek %lf", dist);
+    ROS_INFO("%d Seek %lf", my_id, dist);
     if (dist != 0)
         desired.normalize();
 
@@ -155,10 +158,12 @@ tf2::Vector3 SwarmCtrl::seek()
     else
         desired *= max_speed;
 
-    /* tf2::Vector3 steer = desired - velocity;
+    ROS_INFO("%d desired %lf, %lf, %lf", my_id, desired.getX(), desired.getY(), desired.getZ());    
+
+    tf2::Vector3 steer = desired - velocity;
     limit(steer, max_force);
-    return steer; */
-    return desired;
+    return steer;
+    // return desired;
 }
 
 tf2::Vector3 SwarmCtrl::separate()
@@ -213,7 +218,7 @@ void SwarmCtrl::applyBehaviors()
     tf2::Vector3 seekForce = seek() * seek_weight;
     tf2::Vector3 seperateForce = separate() * separate_weight;
     applyForce(seekForce);
-    //applyForce(seperateForce);
+    applyForce(seperateForce);
 }
 
 void SwarmCtrl::update()

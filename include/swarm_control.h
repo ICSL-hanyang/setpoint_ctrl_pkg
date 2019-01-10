@@ -24,11 +24,12 @@ private:
   tf2::Vector3 relative_pos;
 
 public:
+  VehiclePos();
   VehiclePos(const unsigned int&);
 
-  const unsigned int getID();
+  const unsigned int getID() const;
   void setRelativePos(const tf2::Vector3&);
-  tf2::Vector3 getRelativePos();
+  tf2::Vector3 getRelativePos() const;
 };
 
 class SwarmCtrl
@@ -41,8 +42,8 @@ private:
   ros::Subscriber state_sub;
   mavros_msgs::State cur_state;
 
-  tf2_ros::Buffer* tfBuffer;
-  tf2_ros::TransformListener* tfListener;
+  std::unique_ptr<tf2_ros::Buffer> tfBuffer;
+  std::unique_ptr<tf2_ros::TransformListener> tfListener;
 
   unsigned int num_drone;
 
