@@ -218,7 +218,7 @@ void SwarmCtrl::applyBehaviors()
     tf2::Vector3 seekForce = seek() * seek_weight;
     tf2::Vector3 seperateForce = separate() * separate_weight;
     applyForce(seekForce);
-    applyForce(seperateForce);
+    // applyForce(seperateForce);
 }
 
 void SwarmCtrl::update()
