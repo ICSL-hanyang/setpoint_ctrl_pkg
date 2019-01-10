@@ -53,15 +53,15 @@ private:
   tf2::Vector3 velocity;
   tf2::Vector3 acceleration;
 
-  float m;
-  float k;
-  float b;
-  float range;
+  double m;
+  double kp;
+  double kp_s;
+  double range;
 
-  float max_force;
-  float max_speed;
-  float seek_weight;
-  float separate_weight;
+  double max_force;
+  double max_speed;
+  double seek_weight;
+  double separate_weight;
   void limit(tf2::Vector3, float);
 
   void stateCB(const mavros_msgs::State::ConstPtr &msg);
@@ -78,8 +78,6 @@ public:
   void getNeighborPos();
   tf2::Vector3 seek();
   tf2::Vector3 separate();
-  void applyForce(tf2::Vector3);
-  void applyBehaviors();
   void update();
   void transformSender();
   void run();

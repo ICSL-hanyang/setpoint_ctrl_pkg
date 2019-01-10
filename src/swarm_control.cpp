@@ -38,10 +38,9 @@ void SwarmCtrl::limit(tf2::Vector3 v, float _limit)
 {
     if (tf2::tf2Distance(v, tf2::Vector3(0, 0, 0)) > _limit)
     {
-        //ROS_INFO("limit %lf", v.distance(tf2::Vector3(0,0,0)));
         if (v.distance(tf2::Vector3(0, 0, 0)) != 0)
             v.normalize();
-        v *= _limit; // 개별적으로 곱해지므로 크기가 limit 보다 커짐
+        v *= _limit; 
     }
 }
 
@@ -58,8 +57,8 @@ SwarmCtrl::SwarmCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
                                                velocity(tf2::Vector3(0, 0, 0)),
                                                acceleration(tf2::Vector3(0, 0, 0)),
                                                m(1000),
-                                               k(1),
-                                               b(1),
+                                               kp(0.03),
+                                               kp_s(0.025),
                                                range(2)
 {
     float _num_drone, _id;
@@ -112,9 +111,6 @@ void SwarmCtrl::getNeighborPos()
                 r_pos.setX(transformStamped.transform.translation.x);
                 r_pos.setY(transformStamped.transform.translation.y);
                 r_pos.setZ(transformStamped.transform.translation.z);
-                // printf("x = %f", vehicle_positions[i].getX());
-                // printf("  y = %f", vehicle_positions[i].getY());
-                // printf("  z = %f\n", vehicle_positions[i].getZ());
             }
             catch (tf2::TransformException &ex)
             {
@@ -129,16 +125,16 @@ void SwarmCtrl::getNeighborPos()
 tf2::Vector3 SwarmCtrl::seek()
 {
     geometry_msgs::TransformStamped tf_stamped;
-    tf2::Vector3 desired(0, 0, 0);
+    tf2::Vector3 err(0, 0, 0);
 
     try
     {
         tf_stamped = tfBuffer->lookupTransform("camila" + std::to_string(my_id) + "_setpoint",
                                                "camila" + std::to_string(my_id) + "_target",
                                                ros::Time(0));
-        desired.setX(tf_stamped.transform.translation.x);
-        desired.setY(tf_stamped.transform.translation.y);
-        desired.setZ(tf_stamped.transform.translation.z);
+        err.setX(tf_stamped.transform.translation.x);
+        err.setY(tf_stamped.transform.translation.y);
+        err.setZ(tf_stamped.transform.translation.z);
     }
     catch (tf2::TransformException &ex)
     {
@@ -146,24 +142,12 @@ tf2::Vector3 SwarmCtrl::seek()
         ros::Duration(1.0).sleep();
     }
 
-    float dist = desired.distance(tf2::Vector3(0, 0, 0));
-    float damp_speed = dist * max_speed / (range*10);
+    float dist = err.distance(tf2::Vector3(0, 0, 0));
 
-    ROS_INFO("%d Seek %lf", my_id, dist);
-    if (dist != 0)
-        desired.normalize();
+    if (dist != 0 && dist > 1)
+        err.normalize();
 
-    if (dist < range)
-        desired *= damp_speed;
-    else
-        desired *= max_speed;
-
-    ROS_INFO("%d desired %lf, %lf, %lf", my_id, desired.getX(), desired.getY(), desired.getZ());    
-
-    tf2::Vector3 steer = desired - velocity;
-    limit(steer, max_force);
-    return steer;
-    // return desired;
+    return err;
 }
 
 tf2::Vector3 SwarmCtrl::separate()
@@ -176,13 +160,10 @@ tf2::Vector3 SwarmCtrl::separate()
         {
             tf2::Vector3 diff = pos.getRelativePos();
             float dist = diff.distance(tf2::Vector3(0, 0, 0));
-            //printf("dist = %f", dist);
             if (dist < range)
             {
-                //ROS_INFO("Separate %lf", diff.distance(tf2::Vector3(0,0,0)));
-                if (diff.distance(tf2::Vector3(0, 0, 0)) != 0)
-                    diff.normalize();
-                diff /= dist;
+                if (dist != 0)
+                    diff /= dist;
                 sum += diff;
                 cnt++;
             }
@@ -191,12 +172,8 @@ tf2::Vector3 SwarmCtrl::separate()
     if (cnt > 0)
     {
         sum /= cnt;
-        //ROS_INFO("Sum %lf", sum.distance(tf2::Vector3(0,0,0)));
         if (sum.distance(tf2::Vector3(0, 0, 0)) != 0)
             sum.normalize();
-        sum *= max_speed;
-        sum -= velocity;
-        limit(sum, max_force);
     }
 
     return sum;
@@ -206,30 +183,9 @@ tf2::Vector3 SwarmCtrl::cohesion()
 {
 }
 
-void SwarmCtrl::applyForce(tf2::Vector3 _force)
-{
-    tf2::Vector3 f = _force;
-    f /= m;
-    acceleration += f;
-}
-
-void SwarmCtrl::applyBehaviors()
-{
-    tf2::Vector3 seekForce = seek() * seek_weight;
-    tf2::Vector3 seperateForce = separate() * separate_weight;
-    applyForce(seekForce);
-    // applyForce(seperateForce);
-}
-
 void SwarmCtrl::update()
 {
-    velocity += acceleration;
-    limit(velocity, max_speed);
-    position += velocity;
-    acceleration *= 0;
-    // printf("x = %f", position.getX());
-    // printf("   y = %f", position.getY());
-    // printf("   z = %f\n", position.getZ());
+    position += (separate() * kp_s * separate().distance(tf2::Vector3(0, 0, 0)) + seek() * kp);
 }
 
 void SwarmCtrl::transformSender()
@@ -257,7 +213,6 @@ void SwarmCtrl::run()
     if (cur_state.mode == "offboard" || cur_state.mode == "OFFBOARD")
     {
         getNeighborPos();
-        applyBehaviors();
         update();
     }
     transformSender();
