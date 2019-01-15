@@ -20,11 +20,11 @@ static unsigned int my_id;
 class VehiclePos
 {
 private:
-  unsigned int id;
+  const unsigned int id;
   tf2::Vector3 relative_pos;
 
 public:
-  VehiclePos();
+  VehiclePos() = delete;
   VehiclePos(const unsigned int&);
 
   const unsigned int getID() const;
@@ -32,7 +32,7 @@ public:
   tf2::Vector3 getRelativePos() const;
 };
 
-class SwarmCtrl
+class SetpointCtrl
 {
 private:
   ros::NodeHandle nh;
@@ -44,43 +44,41 @@ private:
 
   std::unique_ptr<tf2_ros::Buffer> tfBuffer;
   std::unique_ptr<tf2_ros::TransformListener> tfListener;
-
-  unsigned int num_drone;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_br;
 
   std::vector<VehiclePos> vehicle_positions;
 
   tf2::Vector3 position;
-  tf2::Vector3 velocity;
-  tf2::Vector3 acceleration;
 
-  double m;
-  double kp;
-  double kp_s;
-  double range;
+  static unsigned int num_drone;
+  static double kp;
+  static double kp_s;
+  static double range;
+  static double max_speed;
 
-  double max_force;
-  double max_speed;
-  double seek_weight;
-  double separate_weight;
-  void limit(tf2::Vector3, float);
+  double max_force; // launch file paramer interface 때문에 남겨둠
+  double seek_weight; // launch file paramer interface 때문에 남겨둠
+  double separate_weight; // launch file paramer interface 때문에 남겨둠
 
-  void stateCB(const mavros_msgs::State::ConstPtr &msg);
+  void limit(tf2::Vector3, double);
+  void getNeighborPos();
+  tf2::Vector3 separate();
+  tf2::Vector3 seek();
+  void update();
+  void reset();
+  void transformSender();
   tf2::Vector3 cohesion(); /* 미구현 */
 
-public:
-  SwarmCtrl(tf2::Vector3);
-  SwarmCtrl(SwarmCtrl &&) = default;
-  SwarmCtrl(const SwarmCtrl &) = default;
-  SwarmCtrl &operator=(SwarmCtrl &&) = default;
-  SwarmCtrl &operator=(const SwarmCtrl &) = default;
-  ~SwarmCtrl();
+  void stateCB(const mavros_msgs::State::ConstPtr &msg);
 
-  void getNeighborPos();
-  tf2::Vector3 seek();
-  tf2::Vector3 separate();
-  void update();
-  void transformSender();
+public:
+  SetpointCtrl(tf2::Vector3);
+  SetpointCtrl(SetpointCtrl &&) = default;
+  SetpointCtrl(const SetpointCtrl &) = default;
+  SetpointCtrl &operator=(SetpointCtrl &&) = default;
+  SetpointCtrl &operator=(const SetpointCtrl &) = default;
+  ~SetpointCtrl();
+
   void run();
 };
-
 #endif
