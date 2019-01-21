@@ -62,6 +62,8 @@ SetpointCtrl::SetpointCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
 
     state_sub = nh_global.subscribe("/camila" + std::to_string(my_id) + "/mavros/state", 10, &SetpointCtrl::stateCB, this);
 
+    vehicle_positions.reserve(num_drone); // 드론 개수에 맞게 메모리를 할당하여 푸쉬백 할때마다 메모리를 재할당을 방지
+
     for (int i = 0; i < num_drone; i++)
     {
         vehicle_positions.push_back(VehiclePos(i + 1));
