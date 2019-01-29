@@ -15,32 +15,43 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h>
 
-static unsigned int my_id;
-
 class VehiclePos
 {
 private:
+  ros::NodeHandle& rNH;
   const unsigned int id;
-  tf2::Vector3 relative_pos;
+  tf2::Vector3 pos;
+  tf2::Vector3 sum_sp;
+  tf2::Vector3 err;
+  tf2::Vector3 setpoint_pos;
+  
+  /* 현재 모드가 offboard 모드일때만 업데이트를 하기 위해 필요 */
+  ros::Subscriber state_sub;
+  mavros_msgs::State cur_state;
 
+  void stateCB(const mavros_msgs::State::ConstPtr &msg);
 public:
   VehiclePos() = delete;
-  VehiclePos(const unsigned int&);
+  VehiclePos(const unsigned int&, ros::NodeHandle&);
+  ~VehiclePos();
 
   const unsigned int getID() const;
-  void setRelativePos(const tf2::Vector3&);
-  tf2::Vector3 getRelativePos() const;
+  void setPos(const tf2::Vector3&);
+  tf2::Vector3 getPos() const;
+  void setSumOfSp(const tf2::Vector3&);
+  tf2::Vector3 getSumOfSp() const;
+  void setErr(const tf2::Vector3&);
+  tf2::Vector3 getErr() const;
+  void setSetpointPos(const tf2::Vector3&);
+  tf2::Vector3 getSetpointPos() const;
+  mavros_msgs::State getCurrntState() const;
 };
 
 class SetpointCtrl
 {
 private:
-  ros::NodeHandle nh;
+  ros::NodeHandle& rNH;
   ros::NodeHandle nh_global;
-  
-  /* 현재 모드가 offboard 모드일때만 업데이트를 하기 위해 필요 */
-  ros::Subscriber state_sub;
-  mavros_msgs::State cur_state;
 
   std::unique_ptr<tf2_ros::Buffer> tfBuffer;
   std::unique_ptr<tf2_ros::TransformListener> tfListener;
@@ -48,37 +59,30 @@ private:
 
   std::vector<VehiclePos> vehicle_positions;
 
-  tf2::Vector3 position;
-
   static unsigned int num_drone;
   static double kp;
-  static double kp_s;
-  static double range;
+  static double kp_sp;
+  static double range_sp;
   static double max_speed;
 
-  double max_force; // launch file paramer interface 때문에 남겨둠
-  double seek_weight; // launch file paramer interface 때문에 남겨둠
-  double separate_weight; // launch file paramer interface 때문에 남겨둠
-
   void limit(tf2::Vector3, double);
-  void getNeighborPos();
-  tf2::Vector3 separate();
-  tf2::Vector3 seek();
+  void getVehiclePos();
+  void separate();
+  void seek();
   void update();
   void reset();
   void transformSender();
   tf2::Vector3 cohesion(); /* 미구현 */
 
-  void stateCB(const mavros_msgs::State::ConstPtr &msg);
 
 public:
-  SetpointCtrl(tf2::Vector3);
+  SetpointCtrl(ros::NodeHandle&);
   SetpointCtrl(SetpointCtrl &&) = default;
   SetpointCtrl(const SetpointCtrl &) = default;
   SetpointCtrl &operator=(SetpointCtrl &&) = default;
   SetpointCtrl &operator=(const SetpointCtrl &) = default;
-  ~SetpointCtrl();
 
   void run();
 };
+
 #endif
