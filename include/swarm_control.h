@@ -33,6 +33,7 @@ private:
 public:
   VehiclePos() = delete;
   VehiclePos(const unsigned int&, ros::NodeHandle&);
+  VehiclePos(const VehiclePos&);
   ~VehiclePos();
 
   const unsigned int getID() const;
@@ -65,13 +66,11 @@ private:
   static double range_sp;
   static double max_speed;
 
-  void limit(tf2::Vector3, double);
-  void getVehiclePos();
-  void separate();
-  void seek();
-  void update();
-  void reset();
-  void transformSender();
+  void limit(tf2::Vector3&, double);
+  void getVehiclePos(VehiclePos&);
+  void separate(VehiclePos&);
+  void seek(VehiclePos&);
+  void transformSender(VehiclePos&);
   tf2::Vector3 cohesion(); /* 미구현 */
 
 
@@ -81,6 +80,7 @@ public:
   SetpointCtrl(const SetpointCtrl &) = default;
   SetpointCtrl &operator=(SetpointCtrl &&) = default;
   SetpointCtrl &operator=(const SetpointCtrl &) = default;
+  ~SetpointCtrl();
 
   void run();
 };
