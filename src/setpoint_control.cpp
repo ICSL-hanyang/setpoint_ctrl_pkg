@@ -3,12 +3,18 @@
 //http://wiki.ros.org/tf2
 
 #include <ros/ros.h>
-#include <swarm_control.h>
+#include <setpoint_control.h>
 
 /* VehiclePos */
 VehiclePos::VehiclePos(const unsigned int &_id)
     : id(_id),
-      relative_pos(tf2::Vector3(0, 0, 0))
+      pos(tf2::Vector3(0, 0, 0))
+{
+}
+
+VehiclePos::VehiclePos(const VehiclePos &rhs)
+    : id(rhs.id),
+      pos(rhs.pos)
 {
 }
 
@@ -17,37 +23,37 @@ const unsigned int VehiclePos::getID() const
     return id;
 }
 
-void VehiclePos::setRelativePos(const tf2::Vector3 &_r_pos)
+void VehiclePos::setPos(const tf2::Vector3 &_r_pos)
 {
-    relative_pos = _r_pos;
+    pos = _r_pos;
 }
 
-tf2::Vector3 VehiclePos::getRelativePos() const
+tf2::Vector3 VehiclePos::getPos() const
 {
-    return relative_pos;
+    return pos;
 }
 
 /* SetpointCtrl */
 unsigned int SetpointCtrl::num_drone;
 double SetpointCtrl::kp = 0.03;
-double SetpointCtrl::kp_s = 0.07;
-double SetpointCtrl::range = 3;
+double SetpointCtrl::kp_sp = 0.07;
+double SetpointCtrl::range_sp = 3;
 double SetpointCtrl::max_speed;
 
-SetpointCtrl::SetpointCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
-                                                     nh_global(ros::NodeHandle()),
-                                                     tfBuffer(new tf2_ros::Buffer()),
-                                                     tfListener(new tf2_ros::TransformListener(*tfBuffer)),
-                                                     tf_br(new tf2_ros::TransformBroadcaster()),
-                                                     position(_position)
+SetpointCtrl::SetpointCtrl(ros::NodeHandle &_rNH) : rNH(_rNH),
+                                                    nh_global(ros::NodeHandle()),
+                                                    tfBuffer(new tf2_ros::Buffer()),
+                                                    tfListener(new tf2_ros::TransformListener(*tfBuffer)),
+                                                    tf_br(new tf2_ros::TransformBroadcaster()),
+                                                    position(tf2::Vector3(0, 0, 0))
 {
-    float _num_drone, _id;
-    nh.getParam("num_drone", _num_drone);
-    nh.getParam("id", _id);
-    nh.getParam("max_force", max_force);
-    nh.getParam("max_speed", max_speed);
-    nh.getParam("seek_weight", seek_weight);
-    nh.getParam("separate_weight", separate_weight);
+    double _num_drone, _id;
+    rNH.getParam("num_drone", _num_drone);
+    rNH.getParam("id", _id);
+    rNH.getParam("kp", kp);
+    rNH.getParam("kp_sp", kp_sp);
+    rNH.getParam("range_sp", range_sp);
+    rNH.getParam("max_speed", max_speed);
 
     if (_num_drone < 1)
     {
@@ -74,9 +80,12 @@ SetpointCtrl::SetpointCtrl(tf2::Vector3 _position) : nh(ros::NodeHandle("~")),
 SetpointCtrl::~SetpointCtrl()
 {
     state_sub.shutdown();
+    tfBuffer.release();
+    tfListener.release();
+    tf_br.release();
 }
 
-void SetpointCtrl::limit(tf2::Vector3 v, double _limit)
+void SetpointCtrl::limit(tf2::Vector3 &v, double _limit)
 {
     if (v.length() > _limit)
     {
@@ -89,27 +98,29 @@ void SetpointCtrl::getNeighborPos()
 {
     for (auto &pos : vehicle_positions)
     {
-        if (pos.getID() != my_id)
-        {
-            geometry_msgs::TransformStamped transformStamped;
-            tf2::Vector3 r_pos(0, 0, 0);
 
-            try
-            {
-                transformStamped = tfBuffer->lookupTransform("camila" + std::to_string(pos.getID()) + "_base_link",
-                                                             "camila" + std::to_string(my_id) + "_base_link",
-                                                             ros::Time(0));
-                r_pos.setX(transformStamped.transform.translation.x);
-                r_pos.setY(transformStamped.transform.translation.y);
-                r_pos.setZ(transformStamped.transform.translation.z);
-            }
-            catch (tf2::TransformException &ex)
-            {
-                ROS_WARN("%s", ex.what());
-                ros::Duration(1.0).sleep();
-            }
-            pos.setRelativePos(r_pos);
+        geometry_msgs::TransformStamped transformStamped;
+        tf2::Vector3 vehicle_pos(0, 0, 0);
+
+        try
+        {
+            transformStamped = tfBuffer->lookupTransform("swarm_map",
+                                                         "camila" + std::to_string(pos.getID()) + "_base_link",
+                                                         ros::Time(0));
+            vehicle_pos.setX(transformStamped.transform.translation.x);
+            vehicle_pos.setY(transformStamped.transform.translation.y);
+            vehicle_pos.setZ(transformStamped.transform.translation.z);
         }
+        catch (tf2::TransformException &ex)
+        {
+            ROS_WARN("%s", ex.what());
+            ros::Duration(1.0).sleep();
+        }
+
+        if (pos.getID() != my_id)
+            pos.setPos(vehicle_pos);
+        else
+            position = vehicle_pos;
     }
 }
 
@@ -121,9 +132,9 @@ tf2::Vector3 SetpointCtrl::separate()
     {
         if (pos.getID() != my_id)
         {
-            tf2::Vector3 diff = pos.getRelativePos();
+            tf2::Vector3 diff = position - pos.getPos();
             float dist = diff.length();
-            if (dist > 0 && dist < range)
+            if (dist > 0 && dist < range_sp)
             {
                 (diff.normalize()) /= dist;
                 sum += diff;
@@ -160,10 +171,6 @@ tf2::Vector3 SetpointCtrl::seek()
         ros::Duration(1.0).sleep();
     }
 
-    // float dist = err.length();
-
-    // if (dist != 0 && dist > 1)
-    //     err.normalize(); // err를 normalse 하는건 err가 클때 맥스 속도로 제한 하는 것
     limit(err, max_speed);
 
     return err;
@@ -171,25 +178,11 @@ tf2::Vector3 SetpointCtrl::seek()
 
 void SetpointCtrl::update()
 {
-    position += (separate() * kp_s + seek() * kp);
-}
-
-void SetpointCtrl::reset(){
-    geometry_msgs::TransformStamped transformStamped;
-    transformStamped.header.stamp = ros::Time::now();
-    transformStamped.header.frame_id = "camila" + std::to_string(my_id) + "_map";
-    transformStamped.child_frame_id = "camila" + std::to_string(my_id) + "_setpoint";
-    transformStamped.transform.translation.x = position.getX();
-    transformStamped.transform.translation.y = position.getY();
-    transformStamped.transform.translation.z = position.getZ();
-
-    tf2::Quaternion q;
-    q.setRPY(0, 0, 0);
-    transformStamped.transform.rotation.x = q.x();
-    transformStamped.transform.rotation.y = q.y();
-    transformStamped.transform.rotation.z = q.z();
-    transformStamped.transform.rotation.w = q.w();
-    tf_br->sendTransform(transformStamped);
+    rNH.getParam("kp", kp);
+    rNH.getParam("kp_sp", kp_sp);
+    rNH.getParam("range_sp", range_sp);
+    rNH.getParam("max_speed", max_speed);
+    setpoint = position + (separate() * kp_sp + seek() * kp);
 }
 
 void SetpointCtrl::transformSender()
@@ -198,9 +191,9 @@ void SetpointCtrl::transformSender()
     transformStamped.header.stamp = ros::Time::now();
     transformStamped.header.frame_id = "swarm_map";
     transformStamped.child_frame_id = "camila" + std::to_string(my_id) + "_setpoint";
-    transformStamped.transform.translation.x = position.getX();
-    transformStamped.transform.translation.y = position.getY();
-    transformStamped.transform.translation.z = position.getZ();
+    transformStamped.transform.translation.x = setpoint.getX();
+    transformStamped.transform.translation.y = setpoint.getY();
+    transformStamped.transform.translation.z = setpoint.getZ();
 
     tf2::Quaternion q;
     q.setRPY(0, 0, 0);
@@ -226,8 +219,6 @@ void SetpointCtrl::run()
     {
         getNeighborPos();
         update();
-        transformSender();
     }
-    else
-        reset();
+    transformSender();
 }
