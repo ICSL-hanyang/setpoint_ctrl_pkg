@@ -1,5 +1,5 @@
 #include <ros/ros.h>
-#include <swarm_control.h>
+#include <setpoint_control.h>
 
 int main(int argc, char **argv)
 {

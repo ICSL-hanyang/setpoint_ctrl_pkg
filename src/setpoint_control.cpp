@@ -3,7 +3,7 @@
 //http://wiki.ros.org/tf2
 
 #include <ros/ros.h>
-#include <swarm_control.h>
+#include <setpoint_control.h>
 
 /* VehiclePos */
 VehiclePos::VehiclePos(const unsigned int &_id, ros::NodeHandle &_rNH)
