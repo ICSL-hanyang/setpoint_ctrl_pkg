@@ -6,175 +6,178 @@
 #include <setpoint_control.h>
 
 /* VehiclePos */
-VehiclePos::VehiclePos(const unsigned int &_id, ros::NodeHandle &_rNH)
-    : rNH(_rNH),
-      id(_id),
-      pos(tf2::Vector3(0, 0, 0)),
-      sum_sp(tf2::Vector3(0, 0, 0)),
-      err(tf2::Vector3(0, 0, 0)),
-      setpoint_pos(tf2::Vector3(0, 0, 0))
+VehiclePos::VehiclePos(ros::NodeHandle &rNH, const unsigned int &id)
+    : rNH_(rNH),
+      id_(id),
+      pos_(tf2::Vector3(0, 0, 0)),
+      sum_sp_(tf2::Vector3(0, 0, 0)),
+      err_(tf2::Vector3(0, 0, 0)),
+      setpoint_pos_(tf2::Vector3(0, 0, 0))
 {
-    state_sub = rNH.subscribe("/camila" + std::to_string(id) + "/mavros/state", 10, &VehiclePos::stateCB, this);
+    state_sub_ = rNH_.subscribe("/camila" + std::to_string(id_) + "/mavros/state", 10, &VehiclePos::stateCB, this);
 }
 
 VehiclePos::VehiclePos(const VehiclePos &rhs)
-    : rNH(rhs.rNH),
-      id(rhs.id),
-      pos(rhs.pos),
-      sum_sp(rhs.sum_sp),
-      err(rhs.err),
-      setpoint_pos(rhs.setpoint_pos)
+    : rNH_(rhs.rNH_),
+      id_(rhs.id_),
+      pos_(rhs.pos_),
+      sum_sp_(rhs.sum_sp_),
+      err_(rhs.err_),
+      setpoint_pos_(rhs.setpoint_pos_)
 {
-    state_sub = rNH.subscribe("/camila" + std::to_string(id) + "/mavros/state", 10, &VehiclePos::stateCB, this);
+    state_sub_ = rNH_.subscribe("/camila" + std::to_string(id_) + "/mavros/state", 10, &VehiclePos::stateCB, this);
 }
 
 VehiclePos::~VehiclePos()
 {
-    state_sub.shutdown();
+    state_sub_.shutdown();
 }
 
 void VehiclePos::stateCB(const mavros_msgs::State::ConstPtr &msg)
 {
-    cur_state = *msg;
+    cur_state_ = *msg;
 }
 
 const unsigned int VehiclePos::getID() const
 {
-    return id;
+    return id_;
 }
 
-void VehiclePos::setPos(const tf2::Vector3 &_pos)
+void VehiclePos::setPos(const tf2::Vector3 &pos)
 {
-    pos = _pos;
+    pos_ = pos;
 }
 
 tf2::Vector3 VehiclePos::getPos() const
 {
-    return pos;
+    return pos_;
 }
 
-void VehiclePos::setSumOfSp(const tf2::Vector3 &_sum_sp)
+void VehiclePos::setSumOfSp(const tf2::Vector3 &sum_sp)
 {
-    sum_sp = _sum_sp;
+    sum_sp_ = sum_sp;
 }
 
 tf2::Vector3 VehiclePos::getSumOfSp() const
 {
-    return sum_sp;
+    return sum_sp_;
 }
 
-void VehiclePos::setErr(const tf2::Vector3 &_err)
+void VehiclePos::setErr(const tf2::Vector3 &err)
 {
-    err = _err;
+    err_ = err;
 }
 
 tf2::Vector3 VehiclePos::getErr() const
 {
-    return err;
+    return err_;
 }
 
-void VehiclePos::setSetpointPos(const tf2::Vector3 &_setpoint_pos)
+void VehiclePos::setSetpointPos(const tf2::Vector3 &setpoint_pos)
 {
-    setpoint_pos = pos + _setpoint_pos;
+    setpoint_pos_ = pos_ + setpoint_pos;
 }
 
 tf2::Vector3 VehiclePos::getSetpointPos() const
 {
-    return setpoint_pos;
+    return setpoint_pos_;
 }
 
 mavros_msgs::State VehiclePos::getCurrntState() const
 {
-    return cur_state;
+    return cur_state_;
 }
 
 /* SetpointCtrl */
-unsigned int SetpointCtrl::num_drone;
-double SetpointCtrl::kp = 0.03;
-double SetpointCtrl::kp_sp = 0.07;
-double SetpointCtrl::range_sp = 3;
-double SetpointCtrl::max_speed;
+unsigned int SetpointCtrl::num_drone_;
+double SetpointCtrl::kp_ = 0.03;
+double SetpointCtrl::kp_sp_ = 0.07;
+double SetpointCtrl::range_sp_ = 3;
+double SetpointCtrl::max_speed_;
 
-SetpointCtrl::SetpointCtrl(ros::NodeHandle &_rNH)
-    : rNH(_rNH),
-      nh_global(""),
-      tfBuffer(new tf2_ros::Buffer()),
-      tfListener(new tf2_ros::TransformListener(*tfBuffer)),
-      tf_br(new tf2_ros::TransformBroadcaster())
+SetpointCtrl::SetpointCtrl(ros::NodeHandle &rNH)
+    : rNH_(rNH),
+      nh_global_(""),
+      tfBuffer_(new tf2_ros::Buffer()),
+      tfListener_(new tf2_ros::TransformListener(*tfBuffer_)),
+      tf_br_(new tf2_ros::TransformBroadcaster())
 {
-    double _num_drone;
-    rNH.getParam("num_drone", _num_drone);
-    rNH.getParam("kp", kp);
-    rNH.getParam("kp_sp", kp_sp);
-    rNH.getParam("range_sp_s", range_sp);
-    rNH.getParam("max_speed", max_speed);
+    double num_drone;
+    rNH_.getParam("num_drone", num_drone);
+    rNH_.getParam("kp", kp_);
+    rNH_.getParam("kp_sp", kp_sp_);
+    rNH_.getParam("range_sp", range_sp_);
+    rNH_.getParam("max_speed", max_speed_);
 
-    if (_num_drone < 1)
+    if (num_drone < 1)
     {
         ROS_WARN("num_drone Param must be greater than 1");
-        num_drone = 0;
+        num_drone_ = 0;
     }
+    else
+        num_drone_ = (unsigned int) num_drone;
 
-    num_drone = (unsigned int)_num_drone;
+    vehicle_positions_.reserve(num_drone_); // 드론 개수에 맞게 메모리를 할당하여 푸쉬백 할때마다 메모리를 재할당을 방지
 
-    vehicle_positions.reserve(num_drone); // 드론 개수에 맞게 메모리를 할당하여 푸쉬백 할때마다 메모리를 재할당을 방지
-
-    for (int i = 0; i < num_drone; i++)
+    for (int i = 0; i < num_drone_; i++)
     {
-        vehicle_positions.push_back(VehiclePos(i + 1, nh_global));
+        vehicle_positions_.push_back(VehiclePos(nh_global_, i + 1));
         // 기체 id는 1부터 여기 for 문만 id 신경 쓰기
     }
 }
 
 SetpointCtrl::~SetpointCtrl()
 {
-    tfBuffer.release();
-    tfListener.release();
-    tf_br.release();
+    tfBuffer_.release();
+    tfListener_.release();
+    tf_br_.release();
 }
 
-void SetpointCtrl::limit(tf2::Vector3 &v, double _limit)
+void SetpointCtrl::limit(tf2::Vector3 &v, const double &limit)
 {
-    if (v.length() > _limit)
+    if (v.length() > limit)
     {
         v.normalize();
-        v *= _limit;
+        v *= limit;
     }
 }
 
-void SetpointCtrl::getVehiclePos(VehiclePos &pos)
+void SetpointCtrl::getVehiclePos()
 {
-    geometry_msgs::TransformStamped transformStamped;
-    tf2::Vector3 vehicle_pos(0, 0, 0);
+    for (auto &pos : vehicle_positions_)
+    {
+        geometry_msgs::TransformStamped transformStamped;
+        tf2::Vector3 vehicle_pos(0, 0, 0);
 
-    try
-    {
-        transformStamped = tfBuffer->lookupTransform("swarm_map",
-                                                     "camila" + std::to_string(pos.getID()) + "_base_link",
-                                                     ros::Time(0));
-        vehicle_pos.setX(transformStamped.transform.translation.x);
-        vehicle_pos.setY(transformStamped.transform.translation.y);
-        vehicle_pos.setZ(transformStamped.transform.translation.z);
+        try
+        {
+            transformStamped = tfBuffer_->lookupTransform("swarm_map",
+                                                         "camila" + std::to_string(pos.getID()) + "_base_link",
+                                                         ros::Time(0));
+            vehicle_pos.setX(transformStamped.transform.translation.x);
+            vehicle_pos.setY(transformStamped.transform.translation.y);
+            vehicle_pos.setZ(transformStamped.transform.translation.z);
+        }
+        catch (tf2::TransformException &ex)
+        {
+            ROS_WARN("%s", ex.what());
+            ros::Duration(1.0).sleep();
+        }
+        pos.setPos(vehicle_pos);
     }
-    catch (tf2::TransformException &ex)
-    {
-        ROS_WARN("%s", ex.what());
-        ros::Duration(1.0).sleep();
-    }
-    pos.setPos(vehicle_pos);
 }
 
 void SetpointCtrl::separate(VehiclePos &pos)
 {
     tf2::Vector3 sum(0, 0, 0);
     unsigned int cnt = 0;
-    for (auto &another_pos : vehicle_positions)
+    for (auto &another_pos : vehicle_positions_)
     {
         if (&pos != &another_pos)
         {
             tf2::Vector3 diff = pos.getPos() - another_pos.getPos();
             float dist = diff.length();
-            if (dist > 0 && dist < range_sp)
+            if (dist > 0 && dist < range_sp_)
             {
                 (diff.normalize()) /= dist;
                 sum += diff;
@@ -185,7 +188,7 @@ void SetpointCtrl::separate(VehiclePos &pos)
     if (cnt > 0)
     {
         sum /= cnt;
-        limit(sum, max_speed);
+        limit(sum, max_speed_);
         pos.setSumOfSp(sum);
     }
 }
@@ -193,16 +196,16 @@ void SetpointCtrl::separate(VehiclePos &pos)
 void SetpointCtrl::seek(VehiclePos &pos)
 {
     geometry_msgs::TransformStamped tf_stamped;
-    tf2::Vector3 err(0, 0, 0);
+    tf2::Vector3 err_(0, 0, 0);
     unsigned int id = pos.getID();
     try
     {
-        tf_stamped = tfBuffer->lookupTransform("camila" + std::to_string(id) + "_setpoint",
+        tf_stamped = tfBuffer_->lookupTransform("camila" + std::to_string(id) + "_setpoint",
                                                "camila" + std::to_string(id) + "_target",
                                                ros::Time(0));
-        err.setX(tf_stamped.transform.translation.x);
-        err.setY(tf_stamped.transform.translation.y);
-        err.setZ(tf_stamped.transform.translation.z);
+        err_.setX(tf_stamped.transform.translation.x);
+        err_.setY(tf_stamped.transform.translation.y);
+        err_.setZ(tf_stamped.transform.translation.z);
     }
     catch (tf2::TransformException &ex)
     {
@@ -210,18 +213,17 @@ void SetpointCtrl::seek(VehiclePos &pos)
         ros::Duration(1.0).sleep();
     }
 
-    limit(err, max_speed);
-    pos.setErr(err);
+    limit(err_, max_speed_);
+    pos.setErr(err_);
 }
 
-void SetpointCtrl::transformSender(VehiclePos &pos)
+void SetpointCtrl::transformSender(const VehiclePos &pos)
 {
-    unsigned int id = pos.getID();
     tf2::Vector3 setpoint = pos.getSetpointPos();
     geometry_msgs::TransformStamped transformStamped;
     transformStamped.header.stamp = ros::Time::now();
     transformStamped.header.frame_id = "swarm_map";
-    transformStamped.child_frame_id = "camila" + std::to_string(id) + "_setpoint";
+    transformStamped.child_frame_id = "camila" + std::to_string(pos.getID()) + "_setpoint";
     transformStamped.transform.translation.x = setpoint.getX();
     transformStamped.transform.translation.y = setpoint.getY();
     transformStamped.transform.translation.z = setpoint.getZ();
@@ -232,7 +234,7 @@ void SetpointCtrl::transformSender(VehiclePos &pos)
     transformStamped.transform.rotation.y = q.y();
     transformStamped.transform.rotation.z = q.z();
     transformStamped.transform.rotation.w = q.w();
-    tf_br->sendTransform(transformStamped);
+    tf_br_->sendTransform(transformStamped);
 }
 
 tf2::Vector3 SetpointCtrl::cohesion()
@@ -241,20 +243,20 @@ tf2::Vector3 SetpointCtrl::cohesion()
 
 void SetpointCtrl::run()
 {
-    rNH.getParam("kp", kp);
-    rNH.getParam("kp_sp", kp_sp);
-    rNH.getParam("range_sp_s", range_sp);
-    rNH.getParam("max_speed", max_speed);
-    for (auto &pos : vehicle_positions)
+    rNH_.getParam("kp", kp_);
+    rNH_.getParam("kp_sp", kp_sp_);
+    rNH_.getParam("range_sp", range_sp_);
+    rNH_.getParam("max_speed", max_speed_);
+    getVehiclePos();
+    for (auto &pos : vehicle_positions_)
     {
         std::string mode(pos.getCurrntState().mode);
         if (mode == "OFFBOARD" || mode == "offboard")
         {
-            getVehiclePos(pos);
             separate(pos);
             seek(pos);
 
-            pos.setSetpointPos(pos.getSumOfSp() * kp_sp + pos.getErr() * kp);
+            pos.setSetpointPos(pos.getSumOfSp() * kp_sp_ + pos.getErr() * kp_);
         }
         transformSender(pos);
     }
