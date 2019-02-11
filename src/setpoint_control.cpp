@@ -200,7 +200,7 @@ void SetpointCtrl::seek(VehiclePos &pos)
     unsigned int id = pos.getID();
     try
     {
-        tf_stamped = tfBuffer_->lookupTransform("camila" + std::to_string(id) + "_setpoint",
+        tf_stamped = tfBuffer_->lookupTransform("camila" + std::to_string(id) + "_base_link",
                                                "camila" + std::to_string(id) + "_target",
                                                ros::Time(0));
         err_.setX(tf_stamped.transform.translation.x);
@@ -243,10 +243,10 @@ tf2::Vector3 SetpointCtrl::cohesion()
 
 void SetpointCtrl::run()
 {
-    rNH_.getParam("kp", kp_);
-    rNH_.getParam("kp_sp", kp_sp_);
-    rNH_.getParam("range_sp", range_sp_);
-    rNH_.getParam("max_speed", max_speed_);
+    rNH_.getParamCached("kp", kp_);
+    rNH_.getParamCached("kp_sp", kp_sp_);
+    rNH_.getParamCached("range_sp", range_sp_);
+    rNH_.getParamCached("max_speed", max_speed_);
     getVehiclePos();
     for (auto &pos : vehicle_positions_)
     {
